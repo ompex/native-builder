@@ -1,0 +1,87 @@
+name: Build native targets
+
+on:
+  workflow_dispatch:
+    inputs:
+      engine_ref:
+        description: Exact ompex/engine commit to build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: ${{ matrix.target_id }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target_id: linux-x64-baseline
+            runner: ubuntu-24.04
+            platform: linux
+            arch: x64
+            variant: baseline
+            glibc: "2.17"
+            rust_checks: "true"
+          - target_id: linux-x64-modern
+            runner: ubuntu-24.04
+            platform: linux
+            arch: x64
+            variant: modern
+            glibc: "2.17"
+            rust_checks: "false"
+          - target_id: linux-arm64
+            runner: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+            glibc: "2.17"
+            rust_checks: "false"
+          - target_id: darwin-x64-baseline
+            runner: macos-15-intel
+            platform: darwin
+            arch: x64
+            variant: baseline
+            rust_checks: "false"
+          - target_id: darwin-arm64
+            runner: macos-14
+            platform: darwin
+            arch: arm64
+            rust_checks: "false"
+    steps:
+      - name: Check out private engine commit
+        env:
+          ENGINE_DEPLOY_KEY: ${{ secrets.ENGINE_DEPLOY_KEY }}
+          ENGINE_REF: ${{ inputs.engine_ref }}
+        run: |
+          if [[ ! "$ENGINE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "engine_ref must be an exact 40-character lowercase commit SHA"
+            exit 1
+          fi
+          install -d -m 0700 ~/.ssh
+          install -m 0600 /dev/null ~/.ssh/engine_deploy_key
+          printf '%s\n' "$ENGINE_DEPLOY_KEY" > ~/.ssh/engine_deploy_key
+          ssh-keyscan -H github.com > ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/engine_deploy_key -o IdentitiesOnly=yes"
+          git init .
+          git remote add origin git@github.com:ompex/engine.git
+          git fetch --depth=1 origin "$ENGINE_REF"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$ENGINE_REF"
+          rm -f ~/.ssh/engine_deploy_key
+
+      - name: Build and upload target addon
+        uses: ./.github/actions/build-native
+        with:
+          hash: ${{ inputs.engine_ref }}
+          platform: ${{ matrix.platform }}
+          arch: ${{ matrix.arch }}
+          variant: ${{ matrix.variant }}
+          target: ${{ matrix.target }}
+          glibc: ${{ matrix.glibc }}
+          rust_checks: ${{ matrix.rust_checks }}
+          save_cache: "false"

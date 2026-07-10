@@ -1,13 +1,21 @@
 # Ompex native builder
 
-Build recipes for producing and validating Ompex native addon artifacts from an
-exact private `ompex/engine` commit.
+Target-native build recipes for an exact private `ompex/engine` commit.
 
-This repository intentionally contains no engine source. The workflow accepts
-only manual dispatches, checks out the requested commit with a read-only deploy
-key in an ephemeral runner, and does not upload source or build artifacts in the
-initial proof.
+This repository intentionally contains no engine source. A manual dispatch:
 
-The long-term contract is to compile and smoke-test native leaves on their
-actual operating-system and CPU targets before the private engine publisher can
-release a matching Bun package graph.
+1. validates an exact 40-character engine commit SHA;
+2. checks it out through a read-only deploy key;
+3. executes that commit's own `.github/actions/build-native` action; and
+4. uploads the resulting native addon artifact.
+
+The matrix runs on the actual supported operating-system and CPU targets:
+
+- Linux x64, baseline and modern ISA variants;
+- Linux ARM64;
+- macOS Intel x64; and
+- macOS Apple Silicon ARM64.
+
+No pull-request or push event can access the deploy key. The private key exists
+only as the encrypted `ENGINE_DEPLOY_KEY` Actions secret and is removed from the
+ephemeral runner immediately after checkout.
