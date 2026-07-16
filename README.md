@@ -17,5 +17,19 @@ The matrix runs on the actual supported operating-system and CPU targets:
 - macOS Apple Silicon ARM64.
 
 No pull-request or push event can access the deploy key. The private key exists
-only as the encrypted `ENGINE_DEPLOY_KEY` Actions secret and is removed from the
-ephemeral runner immediately after checkout.
+only as an encrypted Actions secret and is removed from the ephemeral runner
+immediately after checkout.
+
+## Claudex patcher
+
+`Claudex patcher` is a separate manual-only workflow for one Apple Silicon
+patcher target. It accepts only an exact source SHA, a fixed verification
+profile, and a request UUID. The workflow validates those inputs before using
+its dedicated checkout key, runs the private verification with captured output,
+and deletes private checkout, credential, logs, target files, and temporary
+homes before artifact upload.
+
+Its only artifact is a public-owned, canonical `proof.json`. The proof records
+approved hashes, fixed toolchain facts, profile gates, and public target facts;
+it never contains private source, paths, diagnostics, executable bytes, URLs,
+or credentials. The engine build workflow remains separate and unchanged.

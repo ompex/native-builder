@@ -1,0 +1,74 @@
+name: Claudex patcher
+run-name: ${{ inputs.profile }} ${{ inputs.request_id }} ${{ inputs.subject_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      subject_sha:
+        description: Exact private source commit SHA
+        required: true
+        type: string
+      profile:
+        description: Required verification profile
+        required: true
+        type: choice
+        options: [ci, release, drift]
+      request_id:
+        description: Correlation UUID
+        required: true
+        type: string
+      current_version:
+        description: Current public version for release or drift
+        required: false
+        type: string
+      current_sha256:
+        description: Current public SHA-256 for release or drift
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  patcher:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Mask runner paths
+        run: |
+          echo "::add-mask::$RUNNER_TEMP"
+          echo "::add-mask::$HOME"
+          echo "::add-mask::$GITHUB_WORKSPACE"
+          echo "::add-mask::${TMPDIR:-/tmp}"
+
+      - name: Check out public builder revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install mise
+        uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+        with:
+          install: false
+          cache: false
+
+      - name: Validate, build, and verify private source
+        env:
+          INPUT_SUBJECT_SHA: ${{ inputs.subject_sha }}
+          INPUT_PROFILE: ${{ inputs.profile }}
+          INPUT_REQUEST_ID: ${{ inputs.request_id }}
+          INPUT_CURRENT_VERSION: ${{ inputs.current_version }}
+          INPUT_CURRENT_SHA256: ${{ inputs.current_sha256 }}
+          CLAUDEX_PATCHER_DEPLOY_KEY: ${{ secrets.CLAUDEX_PATCHER_DEPLOY_KEY }}
+          CLAUDEX_PATCHER_REPOSITORY: ${{ secrets.CLAUDEX_PATCHER_REPOSITORY }}
+        run: node scripts/claudex-patcher.js
+
+      - name: Upload proof
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: claudex-patcher-proof
+          path: ${{ runner.temp }}/claudex-patcher-proof/proof.json
+          if-no-files-found: error
+          retention-days: 1
