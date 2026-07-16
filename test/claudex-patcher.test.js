@@ -62,7 +62,7 @@ test('runs exact private command sequence with scrubbed environments and staged 
 
 test('suppresses private diagnostics and cleans private state under failure', async () => {
   const fx = fixture('drift'); const output = []; fx.runCommand = async () => ({ code: 1, stdout: 'const secret = token; /private/source https://private.invalid AST Program', stderr: 'binary\x00' });
-  const result = await patcher.run({ ...fx, inputs: fx.input, toolchainCheck: () => {}, emit: (line) => output.push(line) }); assert.equal(result.ok, false); assert.deepEqual(output, ['PATCHER_OPERATION_FAILED']); assert.doesNotMatch(output.join('\n'), /private|secret|https|AST|binary/i);
+  const result = await patcher.run({ ...fx, inputs: fx.input, toolchainCheck: () => {}, emit: (line) => output.push(line) }); assert.equal(result.ok, false); assert.deepEqual(output, ['PATCHER_CHECKOUT_REJECTED']); assert.doesNotMatch(output.join('\n'), /private|secret|https|AST|binary/i);
   for (const item of ['checkout', 'target', 'logs', 'key', 'home', 'cargo', 'claudex-patcher-proof']) assert.equal(fs.existsSync(path.join(fx.root, item)), false); assert.equal(fx.env.CLAUDEX_PATCHER_DEPLOY_KEY, undefined); assert.equal(fx.env.CLAUDEX_PATCHER_REPOSITORY, undefined); fs.rmSync(fx.root, { recursive: true, force: true });
 });
 
@@ -70,19 +70,19 @@ test('cleans all private state when mise trust fails', async () => {
   const fx = fixture(); const output = []; const original = fx.runCommand;
   fx.runCommand = async (name, args, options) => name === 'mise' && args[0] === 'trust' ? { code: 1, stdout: 'private config', stderr: 'private path' } : original(name, args, options);
   const result = await patcher.run({ ...fx, inputs: fx.input, toolchainCheck: () => {}, emit: (line) => output.push(line) });
-  assert.equal(result.ok, false); assert.deepEqual(output, ['PATCHER_OPERATION_FAILED']); for (const item of ['checkout', 'target', 'logs', 'key', 'home', 'cargo']) assert.equal(fs.existsSync(path.join(fx.root, item)), false); fs.rmSync(fx.root, { recursive: true, force: true });
+  assert.equal(result.ok, false); assert.deepEqual(output, ['PATCHER_SETUP_REJECTED']); for (const item of ['checkout', 'target', 'logs', 'key', 'home', 'cargo']) assert.equal(fs.existsSync(path.join(fx.root, item)), false); fs.rmSync(fx.root, { recursive: true, force: true });
 });
 
 test('rejects an untrusted SSH host key without printing it', async () => {
   const fx = fixture(); const output = []; const original = fx.runCommand;
   fx.runCommand = async (name, args, options) => name === 'ssh-keygen' ? { code: 0, stdout: '256 SHA256:wrong github.com (ED25519)\\n', stderr: '' } : original(name, args, options);
   const result = await patcher.run({ ...fx, inputs: fx.input, toolchainCheck: () => {}, emit: (line) => output.push(line) });
-  assert.equal(result.ok, false); assert.deepEqual(output, ['PATCHER_OPERATION_FAILED']); assert.doesNotMatch(output.join('\\n'), /wrong|github/i); fs.rmSync(fx.root, { recursive: true, force: true });
+  assert.equal(result.ok, false); assert.deepEqual(output, ['PATCHER_CHECKOUT_REJECTED']); assert.doesNotMatch(output.join('\\n'), /wrong|github/i); fs.rmSync(fx.root, { recursive: true, force: true });
 });
 
 test('workflow is manual-only, pinned, and keeps engine workflow frozen', () => {
   const root = path.resolve(__dirname, '..'); const workflow = fs.readFileSync(path.join(root, '.github/workflows/claudex-patcher.yml'), 'utf8');
-  assert.match(workflow, /^on:\n  workflow_dispatch:/m); assert.doesNotMatch(workflow, /^  (push|pull_request|schedule):/m); assert.equal((workflow.match(/runs-on: macos-26/g) || []).length, 1); assert.match(workflow, /persist-credentials: false/); assert.equal((workflow.match(/upload-artifact@/g) || []).length, 1);
+  assert.match(workflow, /^on:\n  workflow_dispatch:/m); assert.doesNotMatch(workflow, /^  (push|pull_request|schedule):/m); assert.equal((workflow.match(/runs-on: macos-26/g) || []).length, 1); assert.match(workflow, /GIT_CONFIG_KEY_0: init\.defaultBranch\n  GIT_CONFIG_VALUE_0: main/); assert.match(workflow, /persist-credentials: false/); assert.equal((workflow.match(/upload-artifact@/g) || []).length, 1);
   for (const use of workflow.matchAll(/^\s+uses:\s+[^\s]+@([0-9a-f]{40}) # v/mg)) assert.equal(use[1].length, 40);
   assert.doesNotMatch(workflow, /ompex\/engine|git@github|https:\/\//);
   assert.equal(require('node:child_process').spawnSync('git', ['diff', '--exit-code', '--', '.github/workflows/build.yml'], { cwd: root }).status, 0);
