@@ -18,7 +18,7 @@ function fixture(profile = 'release') {
   const runCommand = async (name, args, options) => {
     commands.push({ name, args, env: options.env });
     if (name === 'ssh-keyscan') return { code: 0, stdout: 'github-key\n', stderr: '' };
-    if (name === 'ssh-keygen') return { code: 0, stdout: '256 SHA256:+DiY3wvvV6TuJJhbpZisF/zL1TFJJ5X21p+ZFHtF github.com (ED25519)\n', stderr: '' };
+    if (name === 'ssh-keygen') return { code: 0, stdout: '256 SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU github.com (ED25519)\n', stderr: '' };
     if (name === 'git' && args[0] === 'init') { const tracked = path.join(args.at(-1), 'prebuilds/darwin-arm64/claudex-patcher.node'); fs.mkdirSync(path.dirname(tracked), { recursive: true }); fs.writeFileSync(tracked, 'addon'); }
     if (name === 'git' && args.at(-1) === 'HEAD') return { code: 0, stdout: 'a'.repeat(40), stderr: '' };
     if (name === 'curl') fs.writeFileSync(args[args.indexOf('--output') + 1], args.at(-1).includes('2.1.207') ? 'qualified' : 'current');

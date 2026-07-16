@@ -95,7 +95,7 @@ async function run({ inputs, env = process.env, root, runCommand = captured, too
     const gitEnv = { ...scrubEnvironment(env), GIT_SSH_COMMAND: `ssh -i ${key} -o IdentitiesOnly=yes -o LogLevel=ERROR -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${path.join(workspace, 'ssh', 'known_hosts')}` };
     const hostKey = await command(runCommand, 'ssh-keyscan', ['-H', '-t', 'ed25519', 'github.com'], { cwd: workspace, env: gitEnv });
     const fingerprint = await command(runCommand, 'ssh-keygen', ['-lf', '-'], { cwd: workspace, env: gitEnv, input: hostKey.stdout });
-    if (hostKey.code || fingerprint.code || !/^256 SHA256:\+DiY3wvvV6TuJJhbpZisF\/zL1TFJJ5X21p\+ZFHtF /.test(fingerprint.stdout)) reject('checkout');
+    if (hostKey.code || fingerprint.code || !/^256 SHA256:\+DiY3wvvV6TuJJhbpZisF\/zLDA0zPMSvHdkr4UvCOqU /.test(fingerprint.stdout)) reject('checkout');
     fs.writeFileSync(path.join(workspace, 'ssh', 'known_hosts'), hostKey.stdout, { mode: 0o600 });
     for (const args of [['init', '--quiet', checkout], ['-C', checkout, 'remote', 'add', 'origin', env.CLAUDEX_PATCHER_REPOSITORY], ['-C', checkout, 'fetch', '--quiet', '--depth=1', 'origin', input.subjectSha], ['-C', checkout, 'checkout', '--detach', '--quiet', 'FETCH_HEAD'], ['-C', checkout, 'rev-parse', 'HEAD']]) {
       const result = await command(runCommand, 'git', args, { cwd: workspace, env: gitEnv });
