@@ -74,10 +74,33 @@ jobs:
           test "$(git rev-parse HEAD)" = "$ENGINE_REF"
           rm -f ~/.ssh/engine_deploy_key
 
+      - name: Compute native source hash
+        id: hash
+        shell: bash
+        # Content hash of every native build input. Must produce the same value
+        # as the "Compute native source hash" step in engine ci.yml: engine's
+        # native_artifact_lookup matches builder artifacts by this hash. This
+        # variant uses shasum + LC_ALL=C sort so it runs on both the Linux and
+        # macOS runners; for the repo's ASCII, space-free paths it is
+        # byte-identical to engine's sha256sum/sort -z pipeline. The dispatched
+        # engine_ref stays recorded in this run's inputs for exact-commit
+        # provenance.
+        run: |
+          source_hash=$(find crates Cargo.toml Cargo.lock rust-toolchain.toml \
+                  packages/natives/scripts packages/natives/package.json \
+                  scripts/ci-build-native.ts scripts/host-detect.ts \
+                  -type f -print \
+                | LC_ALL=C sort \
+                | xargs shasum -a 256 \
+                | shasum -a 256 \
+                | cut -c1-16)
+          echo "source-hash=$source_hash" >> "$GITHUB_OUTPUT"
+          echo "Native source hash: $source_hash"
+
       - name: Build and upload target addon
         uses: ./.github/actions/build-native
         with:
-          hash: ${{ inputs.engine_ref }}
+          hash: ${{ steps.hash.outputs.source-hash }}
           platform: ${{ matrix.platform }}
           arch: ${{ matrix.arch }}
           variant: ${{ matrix.variant }}
