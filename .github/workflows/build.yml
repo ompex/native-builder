@@ -61,6 +61,7 @@ jobs:
         env:
           ENGINE_DEPLOY_KEY: ${{ secrets.ENGINE_DEPLOY_KEY }}
           ENGINE_REF: ${{ inputs.engine_ref }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [[ ! "$ENGINE_REF" =~ ^[0-9a-f]{40}$ ]]; then
             echo "engine_ref must be an exact 40-character lowercase commit SHA"
@@ -69,8 +70,9 @@ jobs:
           install -d -m 0700 ~/.ssh
           install -m 0600 /dev/null ~/.ssh/engine_deploy_key
           printf '%s\n' "$ENGINE_DEPLOY_KEY" > ~/.ssh/engine_deploy_key
-          ssh-keyscan -H github.com > ~/.ssh/known_hosts
-          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/engine_deploy_key -o IdentitiesOnly=yes"
+          # Host keys over authenticated HTTPS (TLS PKI), not TOFU ssh-keyscan.
+          gh api meta --jq '.ssh_keys[] | "github.com \(.)"' > ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/engine_deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts"
           git init .
           git remote add origin git@github.com:ompex/engine.git
           git fetch --depth=1 origin "$ENGINE_REF"
