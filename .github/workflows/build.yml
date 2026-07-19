@@ -108,3 +108,37 @@ jobs:
           glibc: ${{ matrix.glibc }}
           rust_checks: ${{ matrix.rust_checks }}
           save_cache: "false"
+
+      - name: Write provenance manifest
+        shell: bash
+        env:
+          ENGINE_SHA: ${{ inputs.engine_ref }}
+          SOURCE_HASH: ${{ steps.hash.outputs.source-hash }}
+          TARGET_ID: ${{ matrix.target_id }}
+        run: |
+          mkdir -p /tmp/native-manifest
+          upstream_json="{}"
+          if [ -f upstream.json ]; then upstream_json=$(cat upstream.json); fi
+          rustc_version=$(rustc --version 2>/dev/null || echo unknown)
+          {
+            printf '{\n'
+            printf '  "sourceRepository": "ompex/engine",\n'
+            printf '  "engineSha": "%s",\n' "$ENGINE_SHA"
+            printf '  "nativeSourceHash": "%s",\n' "$SOURCE_HASH"
+            printf '  "targetId": "%s",\n' "$TARGET_ID"
+            printf '  "builderRunId": "%s",\n' "$GITHUB_RUN_ID"
+            printf '  "rustc": "%s",\n' "$rustc_version"
+            printf '  "upstream": %s\n' "$upstream_json"
+            printf '}\n'
+          } > "/tmp/native-manifest/manifest-${TARGET_ID}.json"
+          shasum -a 256 packages/natives/native/pi_natives.*.node \
+            | sed 's|packages/natives/native/||' \
+            > "/tmp/native-manifest/checksums-${TARGET_ID}.txt"
+          cat "/tmp/native-manifest/manifest-${TARGET_ID}.json" "/tmp/native-manifest/checksums-${TARGET_ID}.txt"
+
+      - name: Upload provenance manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-natives-manifest-${{ matrix.target_id }}-h${{ steps.hash.outputs.source-hash }}
+          path: /tmp/native-manifest/
+          if-no-files-found: error
