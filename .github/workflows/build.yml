@@ -4,12 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       engine_ref:
-        description: Exact ompex/engine commit to build
+        description: Exact 40-character lowercase engine commit SHA to build
         required: true
         type: string
-
-permissions:
-  contents: read
+  # poll-engine.yml calls this workflow for release tags it discovers, so
+  # release builds need no cross-repo dispatch credential. Note the
+  # artifacts of called runs belong to the CALLER's run; the engine locates
+  # them by artifact name, never by workflow run listing.
+  workflow_call:
+    inputs:
+      engine_ref:
+        required: true
+        type: string
 
 jobs:
   native:
@@ -83,30 +89,15 @@ jobs:
       - name: Compute native source hash
         id: hash
         shell: bash
-        # Content hash of every native build input. Must produce the same value
-        # as the "Compute native source hash" step in engine ci.yml: engine's
-        # native_artifact_lookup matches builder artifacts by this hash. This
-        # variant uses shasum + LC_ALL=C sort so it runs on both the Linux and
-        # macOS runners; for the repo's ASCII, space-free paths it is
-        # byte-identical to engine's sha256sum/sort -z pipeline. The dispatched
-        # engine_ref stays recorded in this run's inputs for exact-commit
-        # provenance.
-        run: |
-          source_hash=$(find crates Cargo.toml Cargo.lock rust-toolchain.toml \
-                  packages/natives/scripts packages/natives/package.json \
-                  scripts/ci-build-native.ts scripts/host-detect.ts \
-                  -type f -print \
-                | LC_ALL=C sort \
-                | xargs shasum -a 256 \
-                | shasum -a 256 \
-                | cut -c1-16)
-          echo "source-hash=$source_hash" >> "$GITHUB_OUTPUT"
-          echo "Native source hash: $source_hash"
+        # Single canonical implementation, shared with engine CI via the
+        # engine checkout - the two pipelines cannot fork.
+        run: echo "source-hash=$(bash scripts/ci/native-source-hash.sh)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and upload target addon
+      - name: Build, attest, and upload target addon
         uses: ./.github/actions/build-native
         with:
           hash: ${{ steps.hash.outputs.source-hash }}
+          engine_sha: ${{ inputs.engine_ref }}
           platform: ${{ matrix.platform }}
           arch: ${{ matrix.arch }}
           variant: ${{ matrix.variant }}
@@ -114,37 +105,3 @@ jobs:
           glibc: ${{ matrix.glibc }}
           rust_checks: ${{ matrix.rust_checks }}
           save_cache: "false"
-
-      - name: Write provenance manifest
-        shell: bash
-        env:
-          ENGINE_SHA: ${{ inputs.engine_ref }}
-          SOURCE_HASH: ${{ steps.hash.outputs.source-hash }}
-          TARGET_ID: ${{ matrix.target_id }}
-        run: |
-          mkdir -p /tmp/native-manifest
-          upstream_json="{}"
-          if [ -f upstream.json ]; then upstream_json=$(cat upstream.json); fi
-          rustc_version=$(rustc --version 2>/dev/null || echo unknown)
-          {
-            printf '{\n'
-            printf '  "sourceRepository": "ompex/engine",\n'
-            printf '  "engineSha": "%s",\n' "$ENGINE_SHA"
-            printf '  "nativeSourceHash": "%s",\n' "$SOURCE_HASH"
-            printf '  "targetId": "%s",\n' "$TARGET_ID"
-            printf '  "builderRunId": "%s",\n' "$GITHUB_RUN_ID"
-            printf '  "rustc": "%s",\n' "$rustc_version"
-            printf '  "upstream": %s\n' "$upstream_json"
-            printf '}\n'
-          } > "/tmp/native-manifest/manifest-${TARGET_ID}.json"
-          shasum -a 256 packages/natives/native/pi_natives.*.node \
-            | sed 's|packages/natives/native/||' \
-            > "/tmp/native-manifest/checksums-${TARGET_ID}.txt"
-          cat "/tmp/native-manifest/manifest-${TARGET_ID}.json" "/tmp/native-manifest/checksums-${TARGET_ID}.txt"
-
-      - name: Upload provenance manifest
-        uses: actions/upload-artifact@v4
-        with:
-          name: pi-natives-manifest-${{ matrix.target_id }}-h${{ steps.hash.outputs.source-hash }}
-          path: /tmp/native-manifest/
-          if-no-files-found: error

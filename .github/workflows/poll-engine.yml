@@ -1,0 +1,56 @@
+name: Poll engine for release builds
+
+# Closes the release loop with zero cross-repo write credentials: this
+# workflow discovers new engine release tags through the read-only deploy
+# key and calls build.yml (workflow_call) for any tag whose attested
+# artifact set does not exist yet. Engine release CI waits for that set
+# (scripts/ci/native-find.sh in the engine repo).
+#
+# When the engine has a NATIVE_BUILDER_TOKEN capable of cross-repo
+# dispatch (fine-grained PAT or GitHub App), its release CI dispatches
+# build.yml directly and this poll is only a backup.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: poll-engine
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write # self keepalive + artifact queries
+
+jobs:
+  resolve:
+    name: Detect unbuilt release tag
+    runs-on: ubuntu-24.04
+    outputs:
+      engine_ref: ${{ steps.check.outputs.engine_ref }}
+      needed: ${{ steps.check.outputs.needed }}
+    steps:
+      - name: Keep schedule alive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Public-repo schedules are auto-disabled after 60 days without
+        # repository activity; re-enabling resets that counter.
+        run: gh api -X PUT "/repos/${{ github.repository }}/actions/workflows/poll-engine.yml/enable"
+      - uses: actions/checkout@v5
+      - name: Find latest release tag without attested artifacts
+        id: check
+        env:
+          ENGINE_DEPLOY_KEY: ${{ secrets.ENGINE_DEPLOY_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          BUILDER_REPO: ${{ github.repository }}
+        run: bash scripts/resolve-release.sh >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build release tag
+    needs: resolve
+    if: needs.resolve.outputs.needed == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      engine_ref: ${{ needs.resolve.outputs.engine_ref }}
+    secrets: inherit
