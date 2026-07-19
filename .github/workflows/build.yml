@@ -41,16 +41,17 @@ jobs:
             target: aarch64-unknown-linux-gnu
             glibc: "2.17"
             rust_checks: "false"
+          # Both darwin targets build on macOS 26 images (free labels:
+          # macos-26-intel for x64, macos-26 for arm64). Host OS does not
+          # raise the addon's deployment target - rustc pins each
+          # *-apple-darwin target's minimum itself.
           - target_id: darwin-x64-baseline
-            runner: macos-15-intel
+            runner: macos-26-intel
             platform: darwin
             arch: x64
             variant: baseline
             rust_checks: "false"
           - target_id: darwin-arm64
-            # macos-26 is arm64-only; darwin-x64 stays on macos-15-intel (last
-            # Intel image). Host OS does not raise the addon's deployment
-            # target - rustc pins aarch64-apple-darwin's minimum itself.
             runner: macos-26
             platform: darwin
             arch: arm64
